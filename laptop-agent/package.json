@@ -12,9 +12,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
-    "simple-git": "^3.25.0",
+    "dotenv": "^16.4.5",
     "qrcode": "^1.5.4",
-    "dotenv": "^16.4.5"
+    "simple-git": "^3.25.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "electron": "^31.0.0",
