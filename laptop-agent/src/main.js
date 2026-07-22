@@ -2,6 +2,7 @@ require('dotenv').config();
 const { app, Tray, Menu, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const WebSocketImpl = require('ws');
 const { generateToken } = require('./pairing');
 const { getConfigPath, loadConfig, saveConfig } = require('./config');
 const { createRelayClient } = require('./relayClient');
@@ -22,9 +23,12 @@ function startRelay() {
   if (!config.pairingToken || !config.repoPath) return;
   if (relayChannel) return;
 
+  // Electron's main process runs Node 20, which has no global WebSocket
+  // (added in Node 22), so supabase-realtime needs an explicit implementation.
   const supabase = createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
+    process.env.SUPABASE_ANON_KEY,
+    { realtime: { transport: WebSocketImpl } }
   );
   relayChannel = createRelayClient(supabase, config.pairingToken, config.repoPath);
 }
