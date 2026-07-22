@@ -32,4 +32,20 @@ async function getDiff(repoPath, file, staged) {
   return git.diff(['--', file]);
 }
 
-module.exports = { getStatus, getDiff };
+async function stageFiles(repoPath, files) {
+  const git = simpleGit(repoPath);
+  await git.add(files);
+}
+
+async function commitChanges(repoPath, message) {
+  const git = simpleGit(repoPath);
+  const result = await git.commit(message);
+  return result.commit;
+}
+
+async function pushChanges(repoPath) {
+  const git = simpleGit(repoPath);
+  await git.push();
+}
+
+module.exports = { getStatus, getDiff, stageFiles, commitChanges, pushChanges };
