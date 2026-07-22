@@ -3,6 +3,7 @@ const { app, Tray, Menu, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocketImpl = require('ws');
+const QRCode = require('qrcode');
 const { generateToken } = require('./pairing');
 const { getConfigPath, loadConfig, saveConfig } = require('./config');
 const { createRelayClient } = require('./relayClient');
@@ -51,8 +52,22 @@ function openPairingWindow() {
   });
 }
 
-ipcMain.handle('get-pairing-info', () => {
-  return { pairingToken: config.pairingToken, repoPath: config.repoPath };
+ipcMain.handle('get-pairing-info', async () => {
+  // Rendered here rather than in the window: qrcode ships no browser bundle
+  // in this install, so the renderer gets a ready-made data URL instead.
+  let qrDataUrl = null;
+  if (config.pairingToken) {
+    try {
+      qrDataUrl = await QRCode.toDataURL(config.pairingToken, { width: 240 });
+    } catch (error) {
+      console.error('Failed to render pairing QR code:', error.message);
+    }
+  }
+  return {
+    pairingToken: config.pairingToken,
+    repoPath: config.repoPath,
+    qrDataUrl,
+  };
 });
 
 ipcMain.handle('set-repo-path', (event, repoPath) => {

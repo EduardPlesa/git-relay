@@ -13,7 +13,7 @@
 <body>
   <h2>Pairing Token</h2>
   <p>Scan this on your phone, or copy the token below:</p>
-  <canvas id="qrcode"></canvas>
+  <img id="qrcode" alt="Pairing QR code" />
   <input id="token" readonly />
 
   <h2>Repo Path</h2>
@@ -21,14 +21,15 @@
   <button id="saveRepoPath">Save</button>
   <p id="status"></p>
 
-  <script src="../node_modules/qrcode/build/qrcode.js"></script>
   <script>
+    // The QR image is rendered in the main process (qrcode's Node API) and
+    // handed over as a data URL, so this window needs no browser bundle.
     async function init() {
       const info = await window.agentApi.getPairingInfo();
       document.getElementById('token').value = info.pairingToken || '';
       document.getElementById('repoPath').value = info.repoPath || '';
-      if (info.pairingToken) {
-        QRCode.toCanvas(document.getElementById('qrcode'), info.pairingToken);
+      if (info.qrDataUrl) {
+        document.getElementById('qrcode').src = info.qrDataUrl;
       }
     }
 
