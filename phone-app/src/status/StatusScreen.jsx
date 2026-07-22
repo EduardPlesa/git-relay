@@ -10,6 +10,7 @@ export default function StatusScreen({ token }) {
   const [diffFile, setDiffFile] = useState(null);
   const [commitMessage, setCommitMessage] = useState('');
   const [errorText, setErrorText] = useState('');
+  const [noticeText, setNoticeText] = useState('');
   const commanderRef = useRef(null);
   const channelRef = useRef(null);
 
@@ -48,6 +49,14 @@ export default function StatusScreen({ token }) {
     }
   }
 
+  // Without this the file lists stay empty until "Refresh Status" is pressed,
+  // which leaves Stage and Commit disabled and looking broken.
+  useEffect(() => {
+    if (online) {
+      refreshStatus();
+    }
+  }, [online]);
+
   async function viewDiff(file, staged) {
     setErrorText('');
     try {
@@ -77,9 +86,11 @@ export default function StatusScreen({ token }) {
 
   async function commit() {
     setErrorText('');
+    setNoticeText('');
     try {
-      await commanderRef.current.sendCommand('commit', { message: commitMessage });
+      const result = await commanderRef.current.sendCommand('commit', { message: commitMessage });
       setCommitMessage('');
+      setNoticeText(`Committed ${result.commitHash.slice(0, 7)}.`);
       await refreshStatus();
     } catch (error) {
       setErrorText(error.message);
@@ -88,9 +99,12 @@ export default function StatusScreen({ token }) {
 
   async function push() {
     setErrorText('');
+    setNoticeText('Pushing…');
     try {
       await commanderRef.current.sendCommand('push', {}, 30000);
+      setNoticeText('Pushed to remote.');
     } catch (error) {
+      setNoticeText('');
       setErrorText(error.message);
     }
   }
@@ -99,7 +113,13 @@ export default function StatusScreen({ token }) {
     <div>
       <h1>Git Relay</h1>
       <p>Laptop: {online ? 'Online' : 'Offline'}</p>
+      {!online && (
+        <p style={{ color: '#a15c00' }}>
+          Start the Git Relay tray app on your laptop — every action is disabled until it connects.
+        </p>
+      )}
       {errorText && <p style={{ color: 'red' }}>{errorText}</p>}
+      {noticeText && <p style={{ color: 'green' }}>{noticeText}</p>}
 
       <button onClick={refreshStatus} disabled={!online}>Refresh Status</button>
 
@@ -119,7 +139,7 @@ export default function StatusScreen({ token }) {
           </li>
         ))}
       </ul>
-      <button onClick={stageSelected} disabled={selectedFiles.length === 0}>
+      <button onClick={stageSelected} disabled={!online || selectedFiles.length === 0}>
         Stage selected
       </button>
 
@@ -146,11 +166,17 @@ export default function StatusScreen({ token }) {
         onChange={(event) => setCommitMessage(event.target.value)}
         placeholder="Commit message"
       />
-      <button onClick={commit} disabled={status.staged.length === 0 || !commitMessage.trim()}>
+      <button
+        onClick={commit}
+        disabled={!online || status.staged.length === 0 || !commitMessage.trim()}
+      >
         Commit
       </button>
+      {online && status.staged.length === 0 && (
+        <p>Stage a file before committing.</p>
+      )}
 
-      <button onClick={push}>Push</button>
+      <button onClick={push} disabled={!online}>Push</button>
     </div>
   );
 }
