@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PairingScreen from './pairing/PairingScreen.jsx';
+import StatusScreen from './status/StatusScreen.jsx';
 
 function loadStoredToken() {
   return localStorage.getItem('git-relay-token') || null;
@@ -16,5 +17,5 @@ export default function App() {
   if (!token) {
     return <PairingScreen onPaired={handlePaired} />;
   }
-  return <p>Paired! Repo status UI coming in the next task.</p>;
+  return <StatusScreen token={token} />;
 }
