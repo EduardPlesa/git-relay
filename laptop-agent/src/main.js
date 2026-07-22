@@ -1,0 +1,78 @@
+require('dotenv').config();
+const { app, Tray, Menu, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+const { generateToken } = require('./pairing');
+const { getConfigPath, loadConfig, saveConfig } = require('./config');
+const { createRelayClient } = require('./relayClient');
+
+let tray = null;
+let pairingWindow = null;
+let config = null;
+let relayChannel = null;
+
+function ensurePairingToken() {
+  if (!config.pairingToken) {
+    config.pairingToken = generateToken();
+    saveConfig(getConfigPath(), config);
+  }
+}
+
+function startRelay() {
+  if (!config.pairingToken || !config.repoPath) return;
+  if (relayChannel) return;
+
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+  );
+  relayChannel = createRelayClient(supabase, config.pairingToken, config.repoPath);
+}
+
+function openPairingWindow() {
+  if (pairingWindow) {
+    pairingWindow.focus();
+    return;
+  }
+  pairingWindow = new BrowserWindow({
+    width: 420,
+    height: 520,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  pairingWindow.loadFile(path.join(__dirname, 'pairingWindow.html'));
+  pairingWindow.on('closed', () => {
+    pairingWindow = null;
+  });
+}
+
+ipcMain.handle('get-pairing-info', () => {
+  return { pairingToken: config.pairingToken, repoPath: config.repoPath };
+});
+
+ipcMain.handle('set-repo-path', (event, repoPath) => {
+  config.repoPath = repoPath;
+  saveConfig(getConfigPath(), config);
+  startRelay();
+  return config;
+});
+
+app.whenReady().then(() => {
+  config = loadConfig(getConfigPath());
+  ensurePairingToken();
+  startRelay();
+
+  tray = new Tray(path.join(__dirname, '..', 'assets', 'tray-icon.png'));
+  tray.setToolTip('Git Relay Agent');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Pairing & Settings', click: openPairingWindow },
+      { label: 'Quit', click: () => app.quit() },
+    ])
+  );
+});
+
+app.on('window-all-closed', (event) => {
+  event.preventDefault();
+});
