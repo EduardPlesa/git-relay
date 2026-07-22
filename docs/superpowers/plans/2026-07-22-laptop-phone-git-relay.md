@@ -16,6 +16,7 @@
 - No command queuing while the laptop is offline, and no automatic git conflict resolution — both explicitly out of scope per the spec.
 - PR creation and multi-repo support are Phase 2/3 in the spec and are **not** part of this plan — this plan covers Phase 1 only: pairing, single registered repo, status/diff, stage, commit, push.
 - The pairing token doubles as the Supabase Realtime channel name; it must never be logged or transmitted anywhere outside the paired channel.
+- **Module syntax in laptop-agent** (corrected during Task 2 — vitest 2.1.9 throws if `require('vitest')` is used, it is ESM-only): all `laptop-agent/src/*.js` **source** files use CommonJS (`require()` / `module.exports`), since Electron's main process loads them via `require()` and `laptop-agent/package.json` has no `"type": "module"`. All `laptop-agent/src/*.test.js` **test** files use ES module syntax (`import`/`export`) instead of `require()`, including importing named exports directly from the CommonJS source files under test (e.g. `import { generateToken } from './pairing.js';`) — this interop is validated working (Task 2's tests pass). Every task below that shows `require('vitest')` or `require('./something')` inside a `*.test.js` code block should be read as `import { ... } from 'vitest'` / `import { ... } from './something.js'` instead; the source-file code blocks are unaffected and stay CommonJS as written.
 
 ---
 
