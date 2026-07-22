@@ -54,6 +54,11 @@ ipcMain.handle('get-pairing-info', () => {
 ipcMain.handle('set-repo-path', (event, repoPath) => {
   config.repoPath = repoPath;
   saveConfig(getConfigPath(), config);
+  // startRelay() no-ops once relayChannel exists, so changing the repo path
+  // after the relay is already running only takes effect on next app restart.
+  if (relayChannel) {
+    console.warn('Repo path changed while relay is active — restart the app to apply it.');
+  }
   startRelay();
   return config;
 });
