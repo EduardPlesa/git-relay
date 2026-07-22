@@ -1,0 +1,20 @@
+{
+  "name": "git-relay-laptop-agent",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "simple-git": "^3.25.0",
+    "qrcode": "^1.5.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "vitest": "^2.0.0"
+  }
+}
