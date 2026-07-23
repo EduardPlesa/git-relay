@@ -53,26 +53,40 @@ export default function PairingScreen({ onPaired }) {
   }
 
   return (
-    <div>
+    <div className="pair">
       <h1>Pair with your laptop</h1>
-      <p>Scan the QR code shown in the tray app, or enter the token manually.</p>
+      <p className="hint">Scan the QR code shown in the tray app, or enter the token manually.</p>
 
-      {scanError && <p style={{ color: 'red' }}>{scanError}</p>}
-      {!scanning && <button onClick={startScan}>Scan QR Code</button>}
+      {scanError && <p className="msg is-error">{scanError}</p>}
+      {!scanning && (
+        <button className="primary wide" onClick={startScan}>
+          Scan QR code
+        </button>
+      )}
       {scanning && (
         <div>
-          <div id="qr-reader" style={{ width: '100%' }} />
-          <button onClick={cancelScan}>Cancel</button>
+          <div id="qr-reader" />
+          <button className="wide" onClick={cancelScan}>
+            Cancel
+          </button>
         </div>
       )}
 
+      <p className="sep">or</p>
+
       <form onSubmit={submitManualToken}>
         <input
+          type="text"
           value={manualToken}
           onChange={(event) => setManualToken(event.target.value)}
           placeholder="Paste pairing token"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck="false"
         />
-        <button type="submit">Pair</button>
+        <button className="wide" type="submit" disabled={!manualToken.trim()}>
+          Pair
+        </button>
       </form>
     </div>
   );
