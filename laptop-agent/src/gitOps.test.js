@@ -10,6 +10,9 @@ import {
   commitChanges,
   getRecentCommits,
   isGitRepo,
+  getBranches,
+  createBranch,
+  checkoutBranch,
 } from './gitOps.js';
 
 async function makeTestRepo() {
@@ -55,6 +58,13 @@ describe('getStatus', () => {
     const status = await getStatus(repoPath);
     expect(status.staged).toContain('committed.txt');
     expect(status.unstaged).not.toContain('committed.txt');
+  });
+
+  it('reports the current branch', async () => {
+    const git = simpleGit(repoPath);
+    const summary = await git.branchLocal();
+    const status = await getStatus(repoPath);
+    expect(status.branch).toBe(summary.current);
   });
 });
 
@@ -170,5 +180,56 @@ describe('isGitRepo', () => {
     } finally {
       fs.rmSync(plain, { recursive: true, force: true });
     }
+  });
+});
+
+describe('branches', () => {
+  let repoPath;
+  let defaultBranch;
+
+  beforeEach(async () => {
+    repoPath = await makeTestRepo();
+    defaultBranch = (await simpleGit(repoPath).branchLocal()).current;
+  });
+
+  afterEach(() => {
+    fs.rmSync(repoPath, { recursive: true, force: true });
+  });
+
+  it('lists the default branch as current', async () => {
+    const branches = await getBranches(repoPath);
+    expect(branches.current).toBe(defaultBranch);
+    expect(branches.all).toContain(defaultBranch);
+  });
+
+  it('creates a branch off HEAD and switches to it', async () => {
+    await createBranch(repoPath, 'feature-a');
+    const branches = await getBranches(repoPath);
+    expect(branches.current).toBe('feature-a');
+    expect(branches.all).toContain(defaultBranch);
+    expect(branches.all).toContain('feature-a');
+  });
+
+  it('creates a branch off a given ref without moving the ref branch', async () => {
+    const git = simpleGit(repoPath);
+    const firstCommit = (await git.log({ maxCount: 1 })).latest.hash;
+    fs.writeFileSync(path.join(repoPath, 'second.txt'), 'two\n');
+    await git.add('second.txt');
+    await git.commit('add second file');
+
+    await createBranch(repoPath, 'from-first', firstCommit);
+    const commits = await getRecentCommits(repoPath, 10);
+    expect(commits).toHaveLength(1);
+    expect(commits[0].subject).toBe('initial commit');
+
+    const branches = await getBranches(repoPath);
+    expect(branches.current).toBe('from-first');
+  });
+
+  it('checks out an existing branch', async () => {
+    await createBranch(repoPath, 'feature-b');
+    await checkoutBranch(repoPath, defaultBranch);
+    const branches = await getBranches(repoPath);
+    expect(branches.current).toBe(defaultBranch);
   });
 });

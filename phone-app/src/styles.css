@@ -123,6 +123,10 @@ body {
   width: 100%;
 }
 
+.branch-form {
+  margin-top: 0.75rem;
+}
+
 /* Recent commits ----------------------------------------------------- */
 
 .commits {

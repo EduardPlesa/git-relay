@@ -19,6 +19,9 @@ const gitOps = {
   commitChanges: vi.fn(),
   pushChanges: vi.fn(),
   getRecentCommits: vi.fn(),
+  getBranches: vi.fn(),
+  createBranch: vi.fn(),
+  checkoutBranch: vi.fn(),
 };
 
 const gitOpsPath = require.resolve('./gitOps.js');
@@ -100,6 +103,40 @@ describe('handleCommand', () => {
     const result = await handleCommand('push', { repoId: 'r1' }, repos);
     expect(gitOps.pushChanges).toHaveBeenCalledWith('/repo/app');
     expect(result).toEqual({ ok: true });
+  });
+
+  it('dispatches branches command', async () => {
+    const branches = { current: 'main', all: ['main', 'feature-a'] };
+    gitOps.getBranches.mockResolvedValue(branches);
+    const result = await handleCommand('branches', { repoId: 'r1' }, repos);
+    expect(gitOps.getBranches).toHaveBeenCalledWith('/repo/app');
+    expect(result).toEqual(branches);
+  });
+
+  it('dispatches create-branch with name and optional from ref, then returns the refreshed list', async () => {
+    const branches = { current: 'feature-b', all: ['main', 'feature-b'] };
+    gitOps.createBranch.mockResolvedValue();
+    gitOps.getBranches.mockResolvedValue(branches);
+    const result = await handleCommand(
+      'create-branch',
+      { repoId: 'r1', name: 'feature-b', from: 'main' },
+      repos
+    );
+    expect(gitOps.createBranch).toHaveBeenCalledWith('/repo/app', 'feature-b', 'main');
+    expect(result).toEqual(branches);
+  });
+
+  it('dispatches checkout-branch with name, then returns the refreshed list', async () => {
+    const branches = { current: 'main', all: ['main', 'feature-b'] };
+    gitOps.checkoutBranch.mockResolvedValue();
+    gitOps.getBranches.mockResolvedValue(branches);
+    const result = await handleCommand(
+      'checkout-branch',
+      { repoId: 'r1', name: 'main' },
+      repos
+    );
+    expect(gitOps.checkoutBranch).toHaveBeenCalledWith('/repo/app', 'main');
+    expect(result).toEqual(branches);
   });
 
   it('throws on unknown command', async () => {

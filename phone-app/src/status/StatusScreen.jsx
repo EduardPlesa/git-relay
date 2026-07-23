@@ -3,6 +3,7 @@ import { createSupabaseClient } from '../supabaseClient.js';
 import { createRelayCommander } from '../relay.js';
 
 const EMPTY_STATUS = { staged: [], unstaged: [], untracked: [] };
+const EMPTY_BRANCHES = { current: null, all: [] };
 
 export default function StatusScreen({
   token,
@@ -17,6 +18,9 @@ export default function StatusScreen({
   const [repoId, setRepoId] = useState(null);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const [commits, setCommits] = useState([]);
+  const [branches, setBranches] = useState(EMPTY_BRANCHES);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [showNewBranch, setShowNewBranch] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [diffText, setDiffText] = useState('');
   const [diffFile, setDiffFile] = useState(null);
@@ -105,6 +109,15 @@ export default function StatusScreen({
     }
   }
 
+  async function loadBranches() {
+    try {
+      const result = await run('branches');
+      setBranches(result);
+    } catch (error) {
+      setErrorText(error.message);
+    }
+  }
+
   // When the chosen repo changes (or is first set), pull its status and history.
   // Switching repos also clears the previous repo's diff and staged selection.
   useEffect(() => {
@@ -113,10 +126,44 @@ export default function StatusScreen({
       setDiffText('');
       setStatus(EMPTY_STATUS);
       setCommits([]);
+      setBranches(EMPTY_BRANCHES);
+      setShowNewBranch(false);
       refreshStatus();
       loadCommits();
+      loadBranches();
     }
   }, [online, repoId]);
+
+  // Both branch and status/log change together, so refresh all three after
+  // creating or switching a branch rather than leaving stale data on screen.
+  async function switchBranch(name) {
+    setErrorText('');
+    try {
+      const result = await run('checkout-branch', { name });
+      setBranches(result);
+      await refreshStatus();
+      await loadCommits();
+    } catch (error) {
+      setErrorText(error.message);
+    }
+  }
+
+  async function createNewBranch(event) {
+    event.preventDefault();
+    const name = newBranchName.trim();
+    if (!name) return;
+    setErrorText('');
+    try {
+      const result = await run('create-branch', { name });
+      setBranches(result);
+      setNewBranchName('');
+      setShowNewBranch(false);
+      await refreshStatus();
+      await loadCommits();
+    } catch (error) {
+      setErrorText(error.message);
+    }
+  }
 
   async function viewDiff(file, staged) {
     setErrorText('');
@@ -258,6 +305,52 @@ export default function StatusScreen({
                 </option>
               ))}
             </select>
+          )}
+        </>
+      )}
+
+      {online && hasRepo && (
+        <>
+          <h2>Branch</h2>
+          {branches.all.length === 0 ? (
+            <p className="empty">Loading branches…</p>
+          ) : (
+            <select
+              className="repo-select"
+              value={branches.current ?? ''}
+              onChange={(event) => switchBranch(event.target.value)}
+            >
+              {branches.all.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
+          {showNewBranch ? (
+            <form className="branch-form" onSubmit={createNewBranch}>
+              <input
+                type="text"
+                value={newBranchName}
+                onChange={(event) => setNewBranchName(event.target.value)}
+                placeholder="new-branch-name"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck="false"
+              />
+              <div className="row">
+                <button type="submit" disabled={!newBranchName.trim()}>
+                  Create
+                </button>
+                <button type="button" className="link" onClick={() => setShowNewBranch(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button className="link" onClick={() => setShowNewBranch(true)}>
+              New branch…
+            </button>
           )}
         </>
       )}

@@ -21,7 +21,7 @@ async function getStatus(repoPath) {
     }
   }
 
-  return { staged, unstaged, untracked };
+  return { staged, unstaged, untracked, branch: status.current };
 }
 
 async function getDiff(repoPath, file, staged) {
@@ -70,6 +70,28 @@ async function isGitRepo(repoPath) {
   }
 }
 
+async function getBranches(repoPath) {
+  const git = simpleGit(repoPath);
+  const summary = await git.branchLocal();
+  return { current: summary.current, all: summary.all };
+}
+
+// Branches off `from` when given, otherwise off whatever HEAD currently is —
+// matching `git checkout -b <name> [<from>]`.
+async function createBranch(repoPath, name, from) {
+  const git = simpleGit(repoPath);
+  if (from) {
+    await git.checkout(['-b', name, from]);
+  } else {
+    await git.checkoutLocalBranch(name);
+  }
+}
+
+async function checkoutBranch(repoPath, name) {
+  const git = simpleGit(repoPath);
+  await git.checkout(name);
+}
+
 module.exports = {
   getStatus,
   getDiff,
@@ -78,4 +100,7 @@ module.exports = {
   pushChanges,
   getRecentCommits,
   isGitRepo,
+  getBranches,
+  createBranch,
+  checkoutBranch,
 };
