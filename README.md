@@ -17,6 +17,25 @@ The relay only passes messages. Both sides connect *outbound* to a Supabase
 channel named after a shared pairing token, so there's nothing to port-forward
 and no server holding your source. Git itself only ever runs on the laptop.
 
+## Multiple laptops, multiple phones
+
+The pairing token *is* the channel name, so each tray app generates its own
+token and lives on its own channel. Nothing crosses between them.
+
+- **One phone, several laptops.** Save as many connections as you like and
+  switch with the picker at the top of the status screen. Each entry keeps its
+  own token, so "Work laptop" and "Home laptop" stay separate.
+- **Several phones, one laptop.** Everyone who enters the same token reaches
+  the same tray app and sees the same repo — that's what sharing a token means.
+  Responses are addressed by request id, so one phone never picks up another's
+  reply.
+- **Different people.** Give each person their own tray app and its own token.
+  A command sent on one token is never delivered to another.
+
+The token is the only credential: anyone holding it can run git against that
+repo. Treat it like a password, and use the switcher's **Unpair** to forget a
+laptop from a phone.
+
 ## Packages
 
 | Path | What it is |

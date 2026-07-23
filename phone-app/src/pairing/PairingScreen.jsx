@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 
-export default function PairingScreen({ onPaired }) {
+export default function PairingScreen({ onPaired, onCancel }) {
   const [manualToken, setManualToken] = useState('');
+  const [label, setLabel] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState('');
   const scannerRef = useRef(null);
@@ -10,7 +11,7 @@ export default function PairingScreen({ onPaired }) {
   function submitManualToken(event) {
     event.preventDefault();
     if (manualToken.trim()) {
-      onPaired(manualToken.trim());
+      onPaired(manualToken.trim(), label);
     }
   }
 
@@ -30,7 +31,7 @@ export default function PairingScreen({ onPaired }) {
             console.error('Error stopping scanner after successful scan:', err);
           }
           setScanning(false);
-          onPaired(decodedText.trim());
+          onPaired(decodedText.trim(), label);
         },
         () => {}
       );
@@ -54,7 +55,7 @@ export default function PairingScreen({ onPaired }) {
 
   return (
     <div className="pair">
-      <h1>Pair with your laptop</h1>
+      <h1>{onCancel ? 'Add a laptop' : 'Pair with your laptop'}</h1>
       <p className="hint">Scan the QR code shown in the tray app, or enter the token manually.</p>
 
       {scanError && <p className="msg is-error">{scanError}</p>}
@@ -88,6 +89,21 @@ export default function PairingScreen({ onPaired }) {
           Pair
         </button>
       </form>
+
+      <p className="sep">name</p>
+      <input
+        type="text"
+        value={label}
+        onChange={(event) => setLabel(event.target.value)}
+        placeholder="Work laptop (optional)"
+      />
+      <p className="hint">Shown in the device switcher, so you can tell your laptops apart.</p>
+
+      {onCancel && (
+        <button className="wide" onClick={onCancel}>
+          Cancel
+        </button>
+      )}
     </div>
   );
 }
