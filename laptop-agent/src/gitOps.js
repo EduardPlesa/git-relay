@@ -21,7 +21,15 @@ async function getStatus(repoPath) {
     }
   }
 
-  return { staged, unstaged, untracked, branch: status.current };
+  return {
+    staged,
+    unstaged,
+    untracked,
+    branch: status.current,
+    tracking: status.tracking,
+    ahead: status.ahead,
+    behind: status.behind,
+  };
 }
 
 async function getDiff(repoPath, file, staged) {
@@ -43,9 +51,22 @@ async function commitChanges(repoPath, message) {
   return result.commit;
 }
 
+// A branch created with createBranch() has no upstream yet, and a plain
+// `git push` rejects that with "no upstream branch" — so the first push of
+// any branch sets one, exactly as `git push -u origin <branch>` would.
 async function pushChanges(repoPath) {
   const git = simpleGit(repoPath);
-  await git.push();
+  const status = await git.status();
+  if (!status.tracking) {
+    await git.push(['-u', 'origin', status.current]);
+  } else {
+    await git.push();
+  }
+}
+
+async function pullChanges(repoPath) {
+  const git = simpleGit(repoPath);
+  await git.pull();
 }
 
 async function getRecentCommits(repoPath, count = 20) {
@@ -92,15 +113,37 @@ async function checkoutBranch(repoPath, name) {
   await git.checkout(name);
 }
 
+// `tracked` distinguishes which discard git needs: checkout restores a
+// tracked file's unstaged edits from the index, while clean is what removes
+// a file git has never seen before (checkout doesn't know it exists).
+async function discardFile(repoPath, file, tracked) {
+  const git = simpleGit(repoPath);
+  if (tracked) {
+    await git.checkout(['--', file]);
+  } else {
+    await git.clean('f', ['--', file]);
+  }
+}
+
+// Safe delete (`git branch -d`): refuses an unmerged branch or the branch
+// you're currently on, same as it would from the command line.
+async function deleteBranch(repoPath, name) {
+  const git = simpleGit(repoPath);
+  await git.deleteLocalBranch(name);
+}
+
 module.exports = {
   getStatus,
   getDiff,
   stageFiles,
   commitChanges,
   pushChanges,
+  pullChanges,
   getRecentCommits,
   isGitRepo,
   getBranches,
   createBranch,
   checkoutBranch,
+  discardFile,
+  deleteBranch,
 };

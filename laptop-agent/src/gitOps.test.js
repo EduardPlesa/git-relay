@@ -8,11 +8,15 @@ import {
   getDiff,
   stageFiles,
   commitChanges,
+  pushChanges,
+  pullChanges,
   getRecentCommits,
   isGitRepo,
   getBranches,
   createBranch,
   checkoutBranch,
+  discardFile,
+  deleteBranch,
 } from './gitOps.js';
 
 async function makeTestRepo() {
@@ -231,5 +235,179 @@ describe('branches', () => {
     await checkoutBranch(repoPath, defaultBranch);
     const branches = await getBranches(repoPath);
     expect(branches.current).toBe(defaultBranch);
+  });
+});
+
+describe('discardFile', () => {
+  let repoPath;
+
+  beforeEach(async () => {
+    repoPath = await makeTestRepo();
+  });
+
+  afterEach(() => {
+    fs.rmSync(repoPath, { recursive: true, force: true });
+  });
+
+  it('reverts an unstaged modification to a tracked file', async () => {
+    fs.writeFileSync(path.join(repoPath, 'committed.txt'), 'changed\n');
+    await discardFile(repoPath, 'committed.txt', true);
+    const status = await getStatus(repoPath);
+    expect(status.unstaged).toEqual([]);
+    // git normalizes line endings on checkout per core.autocrlf, so compare
+    // content ignoring CRLF vs LF rather than the exact bytes.
+    const content = fs.readFileSync(path.join(repoPath, 'committed.txt'), 'utf8');
+    expect(content.replace(/\r\n/g, '\n')).toBe('initial\n');
+  });
+
+  it('leaves staged content alone when discarding an unstaged edit on top of it', async () => {
+    fs.writeFileSync(path.join(repoPath, 'committed.txt'), 'staged\n');
+    const git = simpleGit(repoPath);
+    await git.add('committed.txt');
+    fs.writeFileSync(path.join(repoPath, 'committed.txt'), 'staged then changed\n');
+
+    await discardFile(repoPath, 'committed.txt', true);
+
+    const status = await getStatus(repoPath);
+    expect(status.unstaged).toEqual([]);
+    expect(status.staged).toContain('committed.txt');
+    const content = fs.readFileSync(path.join(repoPath, 'committed.txt'), 'utf8');
+    expect(content.replace(/\r\n/g, '\n')).toBe('staged\n');
+  });
+
+  it('deletes an untracked file', async () => {
+    fs.writeFileSync(path.join(repoPath, 'scratch.txt'), 'temp\n');
+    await discardFile(repoPath, 'scratch.txt', false);
+    expect(fs.existsSync(path.join(repoPath, 'scratch.txt'))).toBe(false);
+  });
+});
+
+describe('deleteBranch', () => {
+  let repoPath;
+  let defaultBranch;
+
+  beforeEach(async () => {
+    repoPath = await makeTestRepo();
+    defaultBranch = (await simpleGit(repoPath).branchLocal()).current;
+  });
+
+  afterEach(() => {
+    fs.rmSync(repoPath, { recursive: true, force: true });
+  });
+
+  it('deletes a merged branch', async () => {
+    await createBranch(repoPath, 'feature-c');
+    await checkoutBranch(repoPath, defaultBranch);
+    await deleteBranch(repoPath, 'feature-c');
+    const branches = await getBranches(repoPath);
+    expect(branches.all).not.toContain('feature-c');
+  });
+
+  it('refuses to delete the branch you are currently on', async () => {
+    await expect(deleteBranch(repoPath, defaultBranch)).rejects.toThrow();
+  });
+
+  it('refuses to delete an unmerged branch', async () => {
+    await createBranch(repoPath, 'feature-d');
+    fs.writeFileSync(path.join(repoPath, 'unmerged.txt'), 'x\n');
+    const git = simpleGit(repoPath);
+    await git.add('unmerged.txt');
+    await git.commit('unmerged work');
+    await checkoutBranch(repoPath, defaultBranch);
+
+    await expect(deleteBranch(repoPath, 'feature-d')).rejects.toThrow();
+    const branches = await getBranches(repoPath);
+    expect(branches.all).toContain('feature-d');
+  });
+});
+
+describe('push/pull against a remote', () => {
+  let tempPaths;
+
+  beforeEach(() => {
+    tempPaths = [];
+  });
+
+  afterEach(() => {
+    for (const p of tempPaths) {
+      fs.rmSync(p, { recursive: true, force: true });
+    }
+  });
+
+  async function makeRemote() {
+    const remotePath = fs.mkdtempSync(path.join(os.tmpdir(), 'git-relay-remote-'));
+    tempPaths.push(remotePath);
+    await simpleGit(remotePath).init(['--bare']);
+    return remotePath;
+  }
+
+  // Sets up a repo with `origin` pointed at a fresh bare remote, and does the
+  // very first push through pushChanges() itself so its upstream-setting
+  // behavior is exercised rather than assumed.
+  async function makeRepoWithRemote() {
+    const repoPath = await makeTestRepo();
+    tempPaths.push(repoPath);
+    const remotePath = await makeRemote();
+    await simpleGit(repoPath).addRemote('origin', remotePath);
+    await pushChanges(repoPath);
+    return { repoPath, remotePath };
+  }
+
+  // Models a teammate: a second clone of the same remote that commits and
+  // pushes, so the first repo has something new to fetch/pull/see as behind.
+  async function pushFromASecondClone(remotePath, fileName, message) {
+    const clonePath = fs.mkdtempSync(path.join(os.tmpdir(), 'git-relay-clone-'));
+    tempPaths.push(clonePath);
+    await simpleGit().clone(remotePath, clonePath);
+    const git = simpleGit(clonePath);
+    await git.addConfig('user.email', 'test@example.com');
+    await git.addConfig('user.name', 'Test User');
+    fs.writeFileSync(path.join(clonePath, fileName), 'content\n');
+    await git.add(fileName);
+    await git.commit(message);
+    await git.push();
+  }
+
+  it('pushChanges sets an upstream on the first push of a branch', async () => {
+    const repoPath = await makeTestRepo();
+    tempPaths.push(repoPath);
+    const remotePath = await makeRemote();
+    await simpleGit(repoPath).addRemote('origin', remotePath);
+
+    await pushChanges(repoPath);
+
+    const status = await getStatus(repoPath);
+    expect(status.tracking).toBe(`origin/${status.branch}`);
+  });
+
+  it('reports ahead count for local commits not yet pushed', async () => {
+    const { repoPath } = await makeRepoWithRemote();
+    fs.writeFileSync(path.join(repoPath, 'local.txt'), 'x\n');
+    const git = simpleGit(repoPath);
+    await git.add('local.txt');
+    await git.commit('local only');
+
+    const status = await getStatus(repoPath);
+    expect(status.ahead).toBe(1);
+    expect(status.behind).toBe(0);
+  });
+
+  it('reports behind count after fetching new remote commits', async () => {
+    const { repoPath, remotePath } = await makeRepoWithRemote();
+    await pushFromASecondClone(remotePath, 'remote.txt', 'remote only');
+    await simpleGit(repoPath).fetch();
+
+    const status = await getStatus(repoPath);
+    expect(status.behind).toBe(1);
+  });
+
+  it('pullChanges merges new commits from the remote', async () => {
+    const { repoPath, remotePath } = await makeRepoWithRemote();
+    await pushFromASecondClone(remotePath, 'remote.txt', 'remote only');
+
+    await pullChanges(repoPath);
+
+    const commits = await getRecentCommits(repoPath, 10);
+    expect(commits.map((c) => c.subject)).toContain('remote only');
   });
 });

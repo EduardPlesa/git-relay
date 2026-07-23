@@ -4,10 +4,13 @@ const {
   stageFiles,
   commitChanges,
   pushChanges,
+  pullChanges,
   getRecentCommits,
   getBranches,
   createBranch,
   checkoutBranch,
+  discardFile,
+  deleteBranch,
 } = require('./gitOps');
 
 function resolveRepoPath(repos, repoId) {
@@ -42,6 +45,12 @@ async function handleCommand(cmd, payload, repos) {
     case 'push':
       await pushChanges(repoPath);
       return { ok: true };
+    case 'pull':
+      await pullChanges(repoPath);
+      return { ok: true };
+    case 'discard':
+      await discardFile(repoPath, payload.file, payload.tracked);
+      return { ok: true };
     case 'branches':
       return getBranches(repoPath);
     case 'create-branch':
@@ -49,6 +58,9 @@ async function handleCommand(cmd, payload, repos) {
       return getBranches(repoPath);
     case 'checkout-branch':
       await checkoutBranch(repoPath, payload.name);
+      return getBranches(repoPath);
+    case 'delete-branch':
+      await deleteBranch(repoPath, payload.name);
       return getBranches(repoPath);
     default:
       throw new Error(`Unknown command: ${cmd}`);
