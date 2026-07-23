@@ -68,6 +68,11 @@ export default function StatusScreen({ token }) {
     }
   }
 
+  function closeDiff() {
+    setDiffFile(null);
+    setDiffText('');
+  }
+
   function toggleFile(file) {
     setSelectedFiles((current) =>
       current.includes(file) ? current.filter((f) => f !== file) : [...current, file]
@@ -109,55 +114,81 @@ export default function StatusScreen({ token }) {
     }
   }
 
+  const changedFiles = [...status.unstaged, ...status.untracked];
+
   return (
-    <div>
-      <h1>Git Relay</h1>
-      <p>Laptop: {online ? 'Online' : 'Offline'}</p>
+    <div className="app">
+      <div className="bar">
+        <h1>Git Relay</h1>
+        <span className={online ? 'dot is-online' : 'dot'}>
+          {online ? 'Laptop online' : 'Laptop offline'}
+        </span>
+      </div>
+
       {!online && (
-        <p style={{ color: '#a15c00' }}>
+        <p className="msg is-warn">
           Start the Git Relay tray app on your laptop — every action is disabled until it connects.
         </p>
       )}
-      {errorText && <p style={{ color: 'red' }}>{errorText}</p>}
-      {noticeText && <p style={{ color: 'green' }}>{noticeText}</p>}
+      {errorText && <p className="msg is-error">{errorText}</p>}
+      {noticeText && <p className="msg is-ok">{noticeText}</p>}
 
-      <button onClick={refreshStatus} disabled={!online}>Refresh Status</button>
-
-      <h2>Unstaged / Untracked</h2>
-      <ul>
-        {[...status.unstaged, ...status.untracked].map((file) => (
-          <li key={file}>
-            <label>
-              <input
-                type="checkbox"
-                checked={selectedFiles.includes(file)}
-                onChange={() => toggleFile(file)}
-              />
-              {file}
-            </label>
-            <button onClick={() => viewDiff(file, false)}>View diff</button>
-          </li>
-        ))}
-      </ul>
-      <button onClick={stageSelected} disabled={!online || selectedFiles.length === 0}>
-        Stage selected
+      <h2>Unstaged &amp; untracked</h2>
+      {changedFiles.length === 0 ? (
+        <p className="empty">Nothing to stage.</p>
+      ) : (
+        <ul className="files">
+          {changedFiles.map((file) => (
+            <li key={file}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selectedFiles.includes(file)}
+                  onChange={() => toggleFile(file)}
+                />
+                <span className="path">{file}</span>
+              </label>
+              <button className="link" onClick={() => viewDiff(file, false)}>
+                Diff
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        className="primary wide"
+        onClick={stageSelected}
+        disabled={!online || selectedFiles.length === 0}
+      >
+        Stage {selectedFiles.length > 0 ? `${selectedFiles.length} selected` : 'selected'}
       </button>
 
       <h2>Staged</h2>
-      <ul>
-        {status.staged.map((file) => (
-          <li key={file}>
-            {file}
-            <button onClick={() => viewDiff(file, true)}>View diff</button>
-          </li>
-        ))}
-      </ul>
+      {status.staged.length === 0 ? (
+        <p className="empty">Stage a file before committing.</p>
+      ) : (
+        <ul className="files">
+          {status.staged.map((file) => (
+            <li key={file}>
+              <span className="path">{file}</span>
+              <button className="link" onClick={() => viewDiff(file, true)}>
+                Diff
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {diffFile && (
-        <div>
-          <h3>Diff: {diffFile}</h3>
+        <section className="diff">
+          <header>
+            <span className="path">{diffFile}</span>
+            <button className="link" onClick={closeDiff}>
+              Close
+            </button>
+          </header>
           <pre>{diffText}</pre>
-        </div>
+        </section>
       )}
 
       <h2>Commit</h2>
@@ -167,16 +198,21 @@ export default function StatusScreen({ token }) {
         placeholder="Commit message"
       />
       <button
+        className="primary wide"
         onClick={commit}
         disabled={!online || status.staged.length === 0 || !commitMessage.trim()}
       >
         Commit
       </button>
-      {online && status.staged.length === 0 && (
-        <p>Stage a file before committing.</p>
-      )}
 
-      <button onClick={push} disabled={!online}>Push</button>
+      <div className="row">
+        <button onClick={refreshStatus} disabled={!online}>
+          Refresh
+        </button>
+        <button onClick={push} disabled={!online}>
+          Push
+        </button>
+      </div>
     </div>
   );
 }
