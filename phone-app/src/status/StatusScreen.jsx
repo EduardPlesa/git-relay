@@ -31,9 +31,33 @@ export default function StatusScreen({
   const [showManageBranches, setShowManageBranches] = useState(false);
   const [confirmDeleteBranch, setConfirmDeleteBranch] = useState(null);
   const [confirmDiscard, setConfirmDiscard] = useState(null);
+  const [busy, setBusy] = useState(false);
   const commanderRef = useRef(null);
   const channelRef = useRef(null);
   const phoneIdRef = useRef(crypto.randomUUID());
+  const repoIdRef = useRef(repoId);
+
+  useEffect(() => {
+    repoIdRef.current = repoId;
+  }, [repoId]);
+
+  // A response arriving after the user has since switched repos would
+  // otherwise overwrite the newly-selected repo's state with the old one's.
+  function isStaleRepo(requestRepoId) {
+    return requestRepoId !== repoIdRef.current;
+  }
+
+  // Wraps a user-triggered action so its button is disabled for the duration —
+  // without this, a slow round-trip plus an impatient second tap could fire
+  // the same commit/push/discard/etc. twice.
+  async function runAction(fn) {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -93,30 +117,39 @@ export default function StatusScreen({
   }, [online]);
 
   async function refreshStatus() {
+    const requestRepoId = repoId;
     setErrorText('');
     try {
       const result = await run('status');
+      if (isStaleRepo(requestRepoId)) return;
       setStatus(result);
       setSelectedFiles([]);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
 
   async function loadCommits() {
+    const requestRepoId = repoId;
     try {
       const result = await run('log', { count: 20 });
+      if (isStaleRepo(requestRepoId)) return;
       setCommits(result.commits);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
 
   async function loadBranches() {
+    const requestRepoId = repoId;
     try {
       const result = await run('branches');
+      if (isStaleRepo(requestRepoId)) return;
       setBranches(result);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
@@ -143,13 +176,15 @@ export default function StatusScreen({
   // Both branch and status/log change together, so refresh all three after
   // creating or switching a branch rather than leaving stale data on screen.
   async function switchBranch(name) {
+    const requestRepoId = repoId;
     setErrorText('');
     try {
       const result = await run('checkout-branch', { name });
+      if (isStaleRepo(requestRepoId)) return;
       setBranches(result);
-      await refreshStatus();
-      await loadCommits();
+      await Promise.all([refreshStatus(), loadCommits()]);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
@@ -158,48 +193,59 @@ export default function StatusScreen({
     event.preventDefault();
     const name = newBranchName.trim();
     if (!name) return;
+    const requestRepoId = repoId;
     setErrorText('');
     try {
       const result = await run('create-branch', { name });
-      setBranches(result);
       setNewBranchName('');
       setShowNewBranch(false);
-      await refreshStatus();
-      await loadCommits();
+      if (isStaleRepo(requestRepoId)) return;
+      setBranches(result);
+      await Promise.all([refreshStatus(), loadCommits()]);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
 
   async function deleteBranchByName(name) {
+    const requestRepoId = repoId;
     setErrorText('');
     try {
       const result = await run('delete-branch', { name });
-      setBranches(result);
       setConfirmDeleteBranch(null);
+      if (isStaleRepo(requestRepoId)) return;
+      setBranches(result);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
 
   async function discardChange(file, tracked) {
+    const requestRepoId = repoId;
     setErrorText('');
     try {
       await run('discard', { file, tracked });
       setConfirmDiscard(null);
+      if (isStaleRepo(requestRepoId)) return;
       await refreshStatus();
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
 
   async function viewDiff(file, staged) {
+    const requestRepoId = repoId;
     setErrorText('');
     try {
       const result = await run('diff', { file, staged });
+      if (isStaleRepo(requestRepoId)) return;
       setDiffFile(file);
       setDiffText(result.diff);
     } catch (error) {
+      if (isStaleRepo(requestRepoId)) return;
       setErrorText(error.message);
     }
   }
@@ -232,8 +278,7 @@ export default function StatusScreen({
       const result = await run('commit', { message: commitMessage });
       setCommitMessage('');
       setNoticeText(`Committed ${result.commitHash.slice(0, 7)}.`);
-      await refreshStatus();
-      await loadCommits();
+      await Promise.all([refreshStatus(), loadCommits()]);
     } catch (error) {
       setErrorText(error.message);
     }
@@ -257,8 +302,7 @@ export default function StatusScreen({
     try {
       await run('pull', {}, 30000);
       setNoticeText('Pulled from remote.');
-      await refreshStatus();
-      await loadCommits();
+      await Promise.all([refreshStatus(), loadCommits()]);
     } catch (error) {
       setNoticeText('');
       setErrorText(error.message);
@@ -370,7 +414,8 @@ export default function StatusScreen({
             <select
               className="repo-select"
               value={branches.current ?? ''}
-              onChange={(event) => switchBranch(event.target.value)}
+              disabled={busy}
+              onChange={(event) => runAction(() => switchBranch(event.target.value))}
             >
               {branches.all.map((name) => (
                 <option key={name} value={name}>
@@ -382,7 +427,10 @@ export default function StatusScreen({
           {branches.current && <p className="hint">{trackingLabel()}</p>}
 
           {showNewBranch && (
-            <form className="branch-form" onSubmit={createNewBranch}>
+            <form
+              className="branch-form"
+              onSubmit={(event) => runAction(() => createNewBranch(event))}
+            >
               <input
                 type="text"
                 value={newBranchName}
@@ -393,7 +441,7 @@ export default function StatusScreen({
                 spellCheck="false"
               />
               <div className="row">
-                <button type="submit" disabled={!newBranchName.trim()}>
+                <button type="submit" disabled={!newBranchName.trim() || busy}>
                   Create
                 </button>
                 <button type="button" className="link" onClick={() => setShowNewBranch(false)}>
@@ -422,7 +470,11 @@ export default function StatusScreen({
                 {otherBranches.map((name) => (
                   <li key={name}>
                     <span className="path">{name}</span>
-                    <button className="link" onClick={() => setConfirmDeleteBranch(name)}>
+                    <button
+                      className="link"
+                      disabled={busy}
+                      onClick={() => setConfirmDeleteBranch(name)}
+                    >
                       Delete
                     </button>
                   </li>
@@ -434,7 +486,11 @@ export default function StatusScreen({
             <p className="msg is-warn">
               Delete branch <code className="path">{confirmDeleteBranch}</code>? This can't be
               undone from the phone.{' '}
-              <button className="link" onClick={() => deleteBranchByName(confirmDeleteBranch)}>
+              <button
+                className="link"
+                disabled={busy}
+                onClick={() => runAction(() => deleteBranchByName(confirmDeleteBranch))}
+              >
                 Delete
               </button>{' '}
               <button className="link" onClick={() => setConfirmDeleteBranch(null)}>
@@ -465,6 +521,7 @@ export default function StatusScreen({
               </button>
               <button
                 className="link"
+                disabled={busy}
                 onClick={() =>
                   setConfirmDiscard({ file, tracked: status.unstaged.includes(file) })
                 }
@@ -482,7 +539,8 @@ export default function StatusScreen({
           undone.{' '}
           <button
             className="link"
-            onClick={() => discardChange(confirmDiscard.file, confirmDiscard.tracked)}
+            disabled={busy}
+            onClick={() => runAction(() => discardChange(confirmDiscard.file, confirmDiscard.tracked))}
           >
             Discard
           </button>{' '}
@@ -494,8 +552,8 @@ export default function StatusScreen({
 
       <button
         className="primary wide"
-        onClick={stageSelected}
-        disabled={!online || !hasRepo || selectedFiles.length === 0}
+        onClick={() => runAction(stageSelected)}
+        disabled={!online || !hasRepo || selectedFiles.length === 0 || busy}
       >
         Stage {selectedFiles.length > 0 ? `${selectedFiles.length} selected` : 'selected'}
       </button>
@@ -536,20 +594,22 @@ export default function StatusScreen({
       />
       <button
         className="primary wide"
-        onClick={commit}
-        disabled={!online || !hasRepo || status.staged.length === 0 || !commitMessage.trim()}
+        onClick={() => runAction(commit)}
+        disabled={
+          !online || !hasRepo || status.staged.length === 0 || !commitMessage.trim() || busy
+        }
       >
         Commit
       </button>
 
       <div className="row">
-        <button onClick={refreshStatus} disabled={!online || !hasRepo}>
+        <button onClick={() => runAction(refreshStatus)} disabled={!online || !hasRepo || busy}>
           Refresh
         </button>
-        <button onClick={pull} disabled={!online || !hasRepo}>
+        <button onClick={() => runAction(pull)} disabled={!online || !hasRepo || busy}>
           Pull
         </button>
-        <button onClick={push} disabled={!online || !hasRepo}>
+        <button onClick={() => runAction(push)} disabled={!online || !hasRepo || busy}>
           Push
         </button>
       </div>
