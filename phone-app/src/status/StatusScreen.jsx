@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createSupabaseClient } from '../supabaseClient.js';
 import { createRelayCommander } from '../relay.js';
 
+const EMPTY_STATUS = { staged: [], unstaged: [], untracked: [] };
+
 export default function StatusScreen({
   token,
   devices = [],
@@ -11,7 +13,10 @@ export default function StatusScreen({
   onRemoveDevice,
 }) {
   const [online, setOnline] = useState(false);
-  const [status, setStatus] = useState({ staged: [], unstaged: [], untracked: [] });
+  const [repos, setRepos] = useState([]);
+  const [repoId, setRepoId] = useState(null);
+  const [status, setStatus] = useState(EMPTY_STATUS);
+  const [commits, setCommits] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [diffText, setDiffText] = useState('');
   const [diffFile, setDiffFile] = useState(null);
@@ -50,10 +55,40 @@ export default function StatusScreen({
     };
   }, [token]);
 
+  // Every git command is scoped to a repo, so send the selected repoId along.
+  function run(cmd, payload = {}, timeoutMs) {
+    return commanderRef.current.sendCommand(cmd, { ...payload, repoId }, timeoutMs);
+  }
+
+  async function loadRepos() {
+    setErrorText('');
+    try {
+      const result = await commanderRef.current.sendCommand('list-repos');
+      setRepos(result.repos);
+      // Keep the current repo if it still exists; otherwise fall back to the
+      // first one the laptop offers (or nothing, if it has none configured).
+      setRepoId((current) =>
+        result.repos.some((r) => r.id === current) ? current : (result.repos[0]?.id ?? null)
+      );
+    } catch (error) {
+      setErrorText(error.message);
+    }
+  }
+
+  // Fetch the repo list as soon as the laptop is reachable.
+  useEffect(() => {
+    if (online) {
+      loadRepos();
+    } else {
+      setRepos([]);
+      setRepoId(null);
+    }
+  }, [online]);
+
   async function refreshStatus() {
     setErrorText('');
     try {
-      const result = await commanderRef.current.sendCommand('status');
+      const result = await run('status');
       setStatus(result);
       setSelectedFiles([]);
     } catch (error) {
@@ -61,18 +96,32 @@ export default function StatusScreen({
     }
   }
 
-  // Without this the file lists stay empty until "Refresh Status" is pressed,
-  // which leaves Stage and Commit disabled and looking broken.
-  useEffect(() => {
-    if (online) {
-      refreshStatus();
+  async function loadCommits() {
+    try {
+      const result = await run('log', { count: 20 });
+      setCommits(result.commits);
+    } catch (error) {
+      setErrorText(error.message);
     }
-  }, [online]);
+  }
+
+  // When the chosen repo changes (or is first set), pull its status and history.
+  // Switching repos also clears the previous repo's diff and staged selection.
+  useEffect(() => {
+    if (online && repoId) {
+      setDiffFile(null);
+      setDiffText('');
+      setStatus(EMPTY_STATUS);
+      setCommits([]);
+      refreshStatus();
+      loadCommits();
+    }
+  }, [online, repoId]);
 
   async function viewDiff(file, staged) {
     setErrorText('');
     try {
-      const result = await commanderRef.current.sendCommand('diff', { file, staged });
+      const result = await run('diff', { file, staged });
       setDiffFile(file);
       setDiffText(result.diff);
     } catch (error) {
@@ -94,7 +143,7 @@ export default function StatusScreen({
   async function stageSelected() {
     setErrorText('');
     try {
-      await commanderRef.current.sendCommand('stage', { files: selectedFiles });
+      await run('stage', { files: selectedFiles });
       await refreshStatus();
     } catch (error) {
       setErrorText(error.message);
@@ -105,10 +154,11 @@ export default function StatusScreen({
     setErrorText('');
     setNoticeText('');
     try {
-      const result = await commanderRef.current.sendCommand('commit', { message: commitMessage });
+      const result = await run('commit', { message: commitMessage });
       setCommitMessage('');
       setNoticeText(`Committed ${result.commitHash.slice(0, 7)}.`);
       await refreshStatus();
+      await loadCommits();
     } catch (error) {
       setErrorText(error.message);
     }
@@ -118,7 +168,7 @@ export default function StatusScreen({
     setErrorText('');
     setNoticeText('Pushing…');
     try {
-      await commanderRef.current.sendCommand('push', {}, 30000);
+      await run('push', {}, 30000);
       setNoticeText('Pushed to remote.');
     } catch (error) {
       setNoticeText('');
@@ -128,6 +178,7 @@ export default function StatusScreen({
 
   const changedFiles = [...status.unstaged, ...status.untracked];
   const activeLabel = devices.find((d) => d.id === activeId)?.label ?? 'this laptop';
+  const hasRepo = Boolean(repoId);
 
   return (
     <div className="app">
@@ -188,6 +239,29 @@ export default function StatusScreen({
       {errorText && <p className="msg is-error">{errorText}</p>}
       {noticeText && <p className="msg is-ok">{noticeText}</p>}
 
+      {online && (
+        <>
+          <h2>Repository</h2>
+          {repos.length === 0 ? (
+            <p className="empty">
+              No repos on this laptop yet. Open the tray app → Pairing &amp; Settings and add one.
+            </p>
+          ) : (
+            <select
+              className="repo-select"
+              value={repoId ?? ''}
+              onChange={(event) => setRepoId(event.target.value)}
+            >
+              {repos.map((repo) => (
+                <option key={repo.id} value={repo.id}>
+                  {repo.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </>
+      )}
+
       <h2>Unstaged &amp; untracked</h2>
       {changedFiles.length === 0 ? (
         <p className="empty">Nothing to stage.</p>
@@ -213,7 +287,7 @@ export default function StatusScreen({
       <button
         className="primary wide"
         onClick={stageSelected}
-        disabled={!online || selectedFiles.length === 0}
+        disabled={!online || !hasRepo || selectedFiles.length === 0}
       >
         Stage {selectedFiles.length > 0 ? `${selectedFiles.length} selected` : 'selected'}
       </button>
@@ -255,19 +329,38 @@ export default function StatusScreen({
       <button
         className="primary wide"
         onClick={commit}
-        disabled={!online || status.staged.length === 0 || !commitMessage.trim()}
+        disabled={!online || !hasRepo || status.staged.length === 0 || !commitMessage.trim()}
       >
         Commit
       </button>
 
       <div className="row">
-        <button onClick={refreshStatus} disabled={!online}>
+        <button onClick={refreshStatus} disabled={!online || !hasRepo}>
           Refresh
         </button>
-        <button onClick={push} disabled={!online}>
+        <button onClick={push} disabled={!online || !hasRepo}>
           Push
         </button>
       </div>
+
+      <h2>Recent commits</h2>
+      {commits.length === 0 ? (
+        <p className="empty">No commits to show.</p>
+      ) : (
+        <ul className="commits">
+          {commits.map((entry) => (
+            <li key={entry.hash}>
+              <code className="hash">{entry.shortHash}</code>
+              <div className="commit-meta">
+                <span className="subject">{entry.subject}</span>
+                <span className="byline">
+                  {entry.author} · {new Date(entry.date).toLocaleDateString()}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

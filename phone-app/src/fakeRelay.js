@@ -72,3 +72,33 @@ export function attachFakeLaptop(hub, token, repoName) {
   channel.subscribe();
   return { channel, seen };
 }
+
+/**
+ * A laptop agent holding several repos, mirroring the real handler: it answers
+ * `list-repos` with id+name pairs and scopes every other command by the
+ * `repoId` the phone sends back.
+ */
+export function attachMultiRepoLaptop(hub, token, repos) {
+  const seen = [];
+  const channel = hub.channel(token, { config: { presence: { key: 'laptop' } } });
+
+  channel.on('broadcast', { event: 'command' }, ({ payload }) => {
+    const { id, cmd, payload: cmdPayload = {} } = payload;
+    let response;
+    if (cmd === 'list-repos') {
+      response = { ok: true, data: { repos: repos.map((r) => ({ id: r.id, name: r.name })) } };
+    } else {
+      const repo = repos.find((r) => r.id === cmdPayload.repoId);
+      if (!repo) {
+        response = { ok: false, error: 'Repo not found' };
+      } else {
+        seen.push({ cmd, repo: repo.name });
+        response = { ok: true, data: { repo: repo.name, staged: [], unstaged: [], untracked: [] } };
+      }
+    }
+    channel.send({ type: 'broadcast', event: 'response', payload: { id, ...response } });
+  });
+
+  channel.subscribe();
+  return { channel, seen };
+}

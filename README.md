@@ -1,8 +1,9 @@
 # Git Relay
 
-Run git from your phone against a repo on your laptop. Check status, read diffs,
-stage files, commit, and push — from a browser, without exposing your laptop to
-the internet.
+Run git from your phone against repos on your laptop. Check status, read diffs,
+stage files, commit, push, and browse recent commits — from a browser, without
+exposing your laptop to the internet. Add as many repos as you like in the tray
+app and pick which one to work in from the phone.
 
 ## How it works
 
@@ -32,15 +33,25 @@ token and lives on its own channel. Nothing crosses between them.
 - **Different people.** Give each person their own tray app and its own token.
   A command sent on one token is never delivered to another.
 
-The token is the only credential: anyone holding it can run git against that
-repo. Treat it like a password, and use the switcher's **Unpair** to forget a
-laptop from a phone.
+The token is the only credential: anyone holding it can run git against every
+repo you've added to that laptop. Treat it like a password, and use the
+switcher's **Unpair** to forget a laptop from a phone.
+
+## Multiple repos on one laptop
+
+The tray app holds a list of repos rather than a single path. Open **Pairing &
+Settings**, click **Add a repo folder…**, and pick a git repository — add as
+many as you want; non-git folders are rejected. The phone shows a **Repository**
+picker once it connects, and every action (status, diff, stage, commit, push,
+recent commits) runs against the repo selected there. Adding or removing a repo
+in the tray app takes effect on the phone's next refresh — no re-pairing or
+restart.
 
 ## Packages
 
 | Path | What it is |
 |---|---|
-| `laptop-agent/` | Electron tray app. Holds the pairing token, owns the repo path, executes git via `simple-git`. |
+| `laptop-agent/` | Electron tray app. Holds the pairing token, owns the list of repo paths, executes git via `simple-git`. |
 | `phone-app/` | Vite + React PWA. Pairs by QR or pasted token, drives the git operations. |
 
 ## Setup
@@ -63,9 +74,9 @@ cd laptop-agent && npm install && npm start
 cd phone-app && npm install && npm run dev -- --host
 ```
 
-Open the tray icon → **Pairing & Settings** to set your repo path and reveal the
+Open the tray icon → **Pairing & Settings** to add your repos and reveal the
 pairing token. On the phone, browse to the dev server's LAN address and enter
-that token.
+that token, then pick a repo from the picker.
 
 The `--host` flag is what makes the dev server reachable from your phone; both
 devices must be on the same network. Note that the QR scanner needs camera

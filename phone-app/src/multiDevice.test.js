@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createRelayCommander } from './relay.js';
-import { createFakeHub, attachFakeLaptop } from './fakeRelay.js';
+import { createFakeHub, attachFakeLaptop, attachMultiRepoLaptop } from './fakeRelay.js';
 
 describe('two phones holding the same token', () => {
   it('both reach the same laptop and see the same repo', async () => {
@@ -72,6 +72,51 @@ describe('separate tray apps on separate tokens', () => {
 
     const orphan = createRelayCommander(hub.channel('token-nobody', {}));
     await expect(orphan.sendCommand('status', {}, 20)).rejects.toThrow('Command timed out');
+  });
+});
+
+describe('picking a repo on one paired laptop', () => {
+  const repos = [
+    { id: 'r1', name: 'app' },
+    { id: 'r2', name: 'docs' },
+  ];
+
+  it('lists the laptop repos as id + name', async () => {
+    const hub = createFakeHub();
+    attachMultiRepoLaptop(hub, 'token-alice', repos);
+    const phone = createRelayCommander(hub.channel('token-alice', {}));
+
+    const result = await phone.sendCommand('list-repos');
+    expect(result.repos).toEqual([
+      { id: 'r1', name: 'app' },
+      { id: 'r2', name: 'docs' },
+    ]);
+  });
+
+  it('scopes a command to the repo the phone selected', async () => {
+    const hub = createFakeHub();
+    const laptop = attachMultiRepoLaptop(hub, 'token-alice', repos);
+    const phone = createRelayCommander(hub.channel('token-alice', {}));
+
+    const onApp = await phone.sendCommand('status', { repoId: 'r1' });
+    const onDocs = await phone.sendCommand('status', { repoId: 'r2' });
+
+    expect(onApp.repo).toBe('app');
+    expect(onDocs.repo).toBe('docs');
+    expect(laptop.seen).toEqual([
+      { cmd: 'status', repo: 'app' },
+      { cmd: 'status', repo: 'docs' },
+    ]);
+  });
+
+  it('rejects a command aimed at a repo the laptop no longer has', async () => {
+    const hub = createFakeHub();
+    attachMultiRepoLaptop(hub, 'token-alice', repos);
+    const phone = createRelayCommander(hub.channel('token-alice', {}));
+
+    await expect(phone.sendCommand('status', { repoId: 'deleted' })).rejects.toThrow(
+      'Repo not found'
+    );
   });
 });
 

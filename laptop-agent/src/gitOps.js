@@ -48,4 +48,34 @@ async function pushChanges(repoPath) {
   await git.push();
 }
 
-module.exports = { getStatus, getDiff, stageFiles, commitChanges, pushChanges };
+async function getRecentCommits(repoPath, count = 20) {
+  const git = simpleGit(repoPath);
+  const log = await git.log({ maxCount: count });
+  return log.all.map((commit) => ({
+    hash: commit.hash,
+    shortHash: commit.hash.slice(0, 7),
+    subject: commit.message,
+    author: commit.author_name,
+    date: commit.date,
+  }));
+}
+
+// Used when adding a folder, so the tray app can reject a path that isn't a
+// git repo before it ever reaches the phone as a confusing per-command error.
+async function isGitRepo(repoPath) {
+  try {
+    return await simpleGit(repoPath).checkIsRepo();
+  } catch {
+    return false;
+  }
+}
+
+module.exports = {
+  getStatus,
+  getDiff,
+  stageFiles,
+  commitChanges,
+  pushChanges,
+  getRecentCommits,
+  isGitRepo,
+};

@@ -1,9 +1,34 @@
-const { getStatus, getDiff, stageFiles, commitChanges, pushChanges } = require('./gitOps');
+const {
+  getStatus,
+  getDiff,
+  stageFiles,
+  commitChanges,
+  pushChanges,
+  getRecentCommits,
+} = require('./gitOps');
 
-async function handleCommand(cmd, payload, repoPath) {
+function resolveRepoPath(repos, repoId) {
+  const repo = repos.find((r) => r.id === repoId);
+  if (!repo) {
+    throw new Error('Repo not found — it may have been removed on the laptop.');
+  }
+  return repo.path;
+}
+
+async function handleCommand(cmd, payload, repos) {
+  // The phone asks for the repo list first, then tags every other command with
+  // the repoId it picked. `repos` is read fresh per command, so repos added or
+  // removed in the tray app take effect without re-pairing or restarting.
+  if (cmd === 'list-repos') {
+    return { repos: repos.map((r) => ({ id: r.id, name: r.name })) };
+  }
+
+  const repoPath = resolveRepoPath(repos, payload.repoId);
   switch (cmd) {
     case 'status':
       return getStatus(repoPath);
+    case 'log':
+      return { commits: await getRecentCommits(repoPath, payload.count) };
     case 'diff':
       return { diff: await getDiff(repoPath, payload.file, payload.staged) };
     case 'stage':
@@ -19,7 +44,7 @@ async function handleCommand(cmd, payload, repoPath) {
   }
 }
 
-function createRelayClient(supabaseClient, channelName, repoPath) {
+function createRelayClient(supabaseClient, channelName, getRepos) {
   const channel = supabaseClient.channel(channelName, {
     config: { presence: { key: 'laptop' } },
   });
@@ -27,7 +52,7 @@ function createRelayClient(supabaseClient, channelName, repoPath) {
   channel.on('broadcast', { event: 'command' }, async ({ payload }) => {
     const { id, cmd, payload: cmdPayload } = payload;
     try {
-      const data = await handleCommand(cmd, cmdPayload, repoPath);
+      const data = await handleCommand(cmd, cmdPayload, getRepos());
       await channel.send({
         type: 'broadcast',
         event: 'response',
