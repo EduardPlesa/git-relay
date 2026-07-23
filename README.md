@@ -82,6 +82,58 @@ undone from the phone.
 | `laptop-agent/` | Electron tray app. Holds the pairing token, owns the list of repo paths, executes git via `simple-git`. |
 | `phone-app/` | Vite + React PWA. Pairs by QR or pasted token, drives the git operations. |
 
+## Repository structure
+
+Two packages and nothing else: `laptop-agent/` is where git actually runs,
+`phone-app/` is the buttons you press, and Supabase Realtime is just the wire
+between them.
+
+```mermaid
+flowchart LR
+    subgraph phone ["phone-app/ · React PWA (remote control)"]
+        direction TB
+        P1["src/pairing/<br/>connect via QR or token"]
+        P2["src/status/<br/>repo picker + git buttons"]
+        P3["src/relay.js<br/>send commands, match replies"]
+    end
+    subgraph laptop ["laptop-agent/ · Electron tray app (runs git)"]
+        direction TB
+        L1["src/relayClient.js<br/>receive + dispatch"]
+        L2["src/gitOps.js<br/>run git via simple-git"]
+        L3["src/config.js<br/>token + repo paths"]
+    end
+    phone -->|"Supabase Realtime"| laptop
+    laptop -->|"responses"| phone
+```
+
+```
+Git Relay/
+├── laptop-agent/             # Electron tray app — holds the token, owns the repo list, runs git
+│   ├── assets/               #   tray icon image
+│   └── src/
+│       ├── main.js           #   Electron entry: tray menu, windows, wiring
+│       ├── gitOps.js         #   the actual git commands, via simple-git
+│       ├── relayClient.js    #   receives commands off the relay, calls gitOps
+│       ├── config.js         #   loads/saves token + repo paths (~/.git-relay-agent)
+│       ├── pairing.js         #  generates the pairing token (= the channel name)
+│       ├── preload.js        #   bridge for the pairing window
+│       └── pairingWindow.html #  the "Pairing & Settings" window UI
+│
+└── phone-app/                # Vite + React PWA — the remote control in the browser
+    ├── public/               #   PWA icons
+    └── src/
+        ├── App.jsx           #   chooses pairing vs status screen, manages saved laptops
+        ├── pairing/          #   PairingScreen — scan QR or paste token
+        ├── status/           #   StatusScreen — repo picker + git action buttons
+        ├── relay.js          #   send commands over Supabase, match replies by id
+        ├── connections.js    #   saved laptops (tokens) in localStorage
+        ├── supabaseClient.js #   builds the Supabase client from .env
+        └── fakeRelay.js      #   in-memory relay stand-in used by tests
+```
+
+Test files (`*.test.js` / `*.test.jsx`) sit next to the file they cover in both
+`src/` folders.
+
 ## Setup
 
 Both packages need Supabase credentials. Copy the examples and fill in your
