@@ -18,10 +18,13 @@ const gitOps = {
   stageFiles: vi.fn(),
   commitChanges: vi.fn(),
   pushChanges: vi.fn(),
+  pullChanges: vi.fn(),
   getRecentCommits: vi.fn(),
   getBranches: vi.fn(),
   createBranch: vi.fn(),
   checkoutBranch: vi.fn(),
+  discardFile: vi.fn(),
+  deleteBranch: vi.fn(),
 };
 
 const gitOpsPath = require.resolve('./gitOps.js');
@@ -105,6 +108,24 @@ describe('handleCommand', () => {
     expect(result).toEqual({ ok: true });
   });
 
+  it('dispatches pull command', async () => {
+    gitOps.pullChanges.mockResolvedValue();
+    const result = await handleCommand('pull', { repoId: 'r1' }, repos);
+    expect(gitOps.pullChanges).toHaveBeenCalledWith('/repo/app');
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('dispatches discard command with file and tracked flag', async () => {
+    gitOps.discardFile.mockResolvedValue();
+    const result = await handleCommand(
+      'discard',
+      { repoId: 'r1', file: 'a.txt', tracked: true },
+      repos
+    );
+    expect(gitOps.discardFile).toHaveBeenCalledWith('/repo/app', 'a.txt', true);
+    expect(result).toEqual({ ok: true });
+  });
+
   it('dispatches branches command', async () => {
     const branches = { current: 'main', all: ['main', 'feature-a'] };
     gitOps.getBranches.mockResolvedValue(branches);
@@ -136,6 +157,19 @@ describe('handleCommand', () => {
       repos
     );
     expect(gitOps.checkoutBranch).toHaveBeenCalledWith('/repo/app', 'main');
+    expect(result).toEqual(branches);
+  });
+
+  it('dispatches delete-branch with name, then returns the refreshed list', async () => {
+    const branches = { current: 'main', all: ['main'] };
+    gitOps.deleteBranch.mockResolvedValue();
+    gitOps.getBranches.mockResolvedValue(branches);
+    const result = await handleCommand(
+      'delete-branch',
+      { repoId: 'r1', name: 'feature-b' },
+      repos
+    );
+    expect(gitOps.deleteBranch).toHaveBeenCalledWith('/repo/app', 'feature-b');
     expect(result).toEqual(branches);
   });
 

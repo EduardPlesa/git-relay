@@ -42,20 +42,38 @@ switcher's **Unpair** to forget a laptop from a phone.
 The tray app holds a list of repos rather than a single path. Open **Pairing &
 Settings**, click **Add a repo folder…**, and pick a git repository — add as
 many as you want; non-git folders are rejected. The phone shows a **Repository**
-picker once it connects, and every action (status, diff, stage, commit, push,
-recent commits, branches) runs against the repo selected there. Adding or
-removing a repo in the tray app takes effect on the phone's next refresh — no
-re-pairing or restart.
+picker once it connects, and every action (status, diff, stage, discard,
+commit, push, pull, recent commits, branches) runs against the repo selected
+there. Adding or removing a repo in the tray app takes effect on the phone's
+next refresh — no re-pairing or restart.
 
 ## Branches
 
 The status screen shows the repo's current branch in a picker: choose a
 different local branch to check it out, or use **New branch…** to create one
-off the current HEAD and switch to it. Switching or creating a branch refreshes
-status and recent commits so nothing stale is left on screen. Checkout fails
-(and reports the git error back to the phone) the same way it would from the
-command line — for example, if you have uncommitted changes that conflict with
-the target branch.
+off the current HEAD and switch to it. **Manage branches…** lists every other
+local branch with a **Delete** action (a safe delete — it refuses an unmerged
+branch or the one you're currently on, same as `git branch -d`). Switching,
+creating, or deleting a branch refreshes status and recent commits so nothing
+stale is left on screen. Any of these fail (and report the git error back to
+the phone) the same way they would from the command line — for example, if you
+have uncommitted changes that conflict with the target branch.
+
+## Syncing with the remote
+
+Below the branch picker, the status screen shows how far the current branch is
+ahead of or behind its upstream. **Pull** fetches and merges from the remote;
+**Push** sends your commits — and if the branch has never been pushed before,
+it sets the upstream automatically (`git push -u origin <branch>`) instead of
+failing with "no upstream branch".
+
+## Discarding changes
+
+Every unstaged or untracked file gets a **Discard** action next to **Diff**.
+For a tracked file this reverts the working copy to match the index (or HEAD,
+if it isn't staged) — any staged content is left untouched. For an untracked
+file it deletes it. Both ask for confirmation first, since neither can be
+undone from the phone.
 
 ## Packages
 

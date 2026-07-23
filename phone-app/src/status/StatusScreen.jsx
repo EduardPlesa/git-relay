@@ -28,6 +28,9 @@ export default function StatusScreen({
   const [errorText, setErrorText] = useState('');
   const [noticeText, setNoticeText] = useState('');
   const [confirmUnpair, setConfirmUnpair] = useState(false);
+  const [showManageBranches, setShowManageBranches] = useState(false);
+  const [confirmDeleteBranch, setConfirmDeleteBranch] = useState(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(null);
   const commanderRef = useRef(null);
   const channelRef = useRef(null);
   const phoneIdRef = useRef(crypto.randomUUID());
@@ -128,6 +131,9 @@ export default function StatusScreen({
       setCommits([]);
       setBranches(EMPTY_BRANCHES);
       setShowNewBranch(false);
+      setShowManageBranches(false);
+      setConfirmDeleteBranch(null);
+      setConfirmDiscard(null);
       refreshStatus();
       loadCommits();
       loadBranches();
@@ -160,6 +166,28 @@ export default function StatusScreen({
       setShowNewBranch(false);
       await refreshStatus();
       await loadCommits();
+    } catch (error) {
+      setErrorText(error.message);
+    }
+  }
+
+  async function deleteBranchByName(name) {
+    setErrorText('');
+    try {
+      const result = await run('delete-branch', { name });
+      setBranches(result);
+      setConfirmDeleteBranch(null);
+    } catch (error) {
+      setErrorText(error.message);
+    }
+  }
+
+  async function discardChange(file, tracked) {
+    setErrorText('');
+    try {
+      await run('discard', { file, tracked });
+      setConfirmDiscard(null);
+      await refreshStatus();
     } catch (error) {
       setErrorText(error.message);
     }
@@ -223,9 +251,33 @@ export default function StatusScreen({
     }
   }
 
+  async function pull() {
+    setErrorText('');
+    setNoticeText('Pulling…');
+    try {
+      await run('pull', {}, 30000);
+      setNoticeText('Pulled from remote.');
+      await refreshStatus();
+      await loadCommits();
+    } catch (error) {
+      setNoticeText('');
+      setErrorText(error.message);
+    }
+  }
+
   const changedFiles = [...status.unstaged, ...status.untracked];
   const activeLabel = devices.find((d) => d.id === activeId)?.label ?? 'this laptop';
   const hasRepo = Boolean(repoId);
+  const otherBranches = branches.all.filter((name) => name !== branches.current);
+
+  function trackingLabel() {
+    if (!status.tracking) return 'No upstream branch yet';
+    const parts = [];
+    if (status.ahead) parts.push(`${status.ahead} ahead`);
+    if (status.behind) parts.push(`${status.behind} behind`);
+    if (parts.length === 0) return `Up to date with ${status.tracking}`;
+    return `${parts.join(' · ')} of ${status.tracking}`;
+  }
 
   return (
     <div className="app">
@@ -327,7 +379,9 @@ export default function StatusScreen({
               ))}
             </select>
           )}
-          {showNewBranch ? (
+          {branches.current && <p className="hint">{trackingLabel()}</p>}
+
+          {showNewBranch && (
             <form className="branch-form" onSubmit={createNewBranch}>
               <input
                 type="text"
@@ -347,10 +401,46 @@ export default function StatusScreen({
                 </button>
               </div>
             </form>
-          ) : (
-            <button className="link" onClick={() => setShowNewBranch(true)}>
-              New branch…
+          )}
+
+          <div className="row">
+            {!showNewBranch && (
+              <button className="link" onClick={() => setShowNewBranch(true)}>
+                New branch…
+              </button>
+            )}
+            <button className="link" onClick={() => setShowManageBranches((v) => !v)}>
+              {showManageBranches ? 'Done' : 'Manage branches…'}
             </button>
+          </div>
+
+          {showManageBranches &&
+            (otherBranches.length === 0 ? (
+              <p className="empty">No other branches to manage.</p>
+            ) : (
+              <ul className="files">
+                {otherBranches.map((name) => (
+                  <li key={name}>
+                    <span className="path">{name}</span>
+                    <button className="link" onClick={() => setConfirmDeleteBranch(name)}>
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ))}
+
+          {confirmDeleteBranch && (
+            <p className="msg is-warn">
+              Delete branch <code className="path">{confirmDeleteBranch}</code>? This can't be
+              undone from the phone.{' '}
+              <button className="link" onClick={() => deleteBranchByName(confirmDeleteBranch)}>
+                Delete
+              </button>{' '}
+              <button className="link" onClick={() => setConfirmDeleteBranch(null)}>
+                Keep
+              </button>
+            </p>
           )}
         </>
       )}
@@ -373,10 +463,35 @@ export default function StatusScreen({
               <button className="link" onClick={() => viewDiff(file, false)}>
                 Diff
               </button>
+              <button
+                className="link"
+                onClick={() =>
+                  setConfirmDiscard({ file, tracked: status.unstaged.includes(file) })
+                }
+              >
+                Discard
+              </button>
             </li>
           ))}
         </ul>
       )}
+
+      {confirmDiscard && (
+        <p className="msg is-warn">
+          Discard changes to <code className="path">{confirmDiscard.file}</code>? This can't be
+          undone.{' '}
+          <button
+            className="link"
+            onClick={() => discardChange(confirmDiscard.file, confirmDiscard.tracked)}
+          >
+            Discard
+          </button>{' '}
+          <button className="link" onClick={() => setConfirmDiscard(null)}>
+            Keep
+          </button>
+        </p>
+      )}
+
       <button
         className="primary wide"
         onClick={stageSelected}
@@ -430,6 +545,9 @@ export default function StatusScreen({
       <div className="row">
         <button onClick={refreshStatus} disabled={!online || !hasRepo}>
           Refresh
+        </button>
+        <button onClick={pull} disabled={!online || !hasRepo}>
+          Pull
         </button>
         <button onClick={push} disabled={!online || !hasRepo}>
           Push
