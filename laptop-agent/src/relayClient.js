@@ -5,6 +5,9 @@ const {
   commitChanges,
   pushChanges,
   getRecentCommits,
+  getBranches,
+  createBranch,
+  checkoutBranch,
 } = require('./gitOps');
 
 function resolveRepoPath(repos, repoId) {
@@ -39,6 +42,14 @@ async function handleCommand(cmd, payload, repos) {
     case 'push':
       await pushChanges(repoPath);
       return { ok: true };
+    case 'branches':
+      return getBranches(repoPath);
+    case 'create-branch':
+      await createBranch(repoPath, payload.name, payload.from);
+      return getBranches(repoPath);
+    case 'checkout-branch':
+      await checkoutBranch(repoPath, payload.name);
+      return getBranches(repoPath);
     default:
       throw new Error(`Unknown command: ${cmd}`);
   }

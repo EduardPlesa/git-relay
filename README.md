@@ -1,9 +1,9 @@
 # Git Relay
 
 Run git from your phone against repos on your laptop. Check status, read diffs,
-stage files, commit, push, and browse recent commits — from a browser, without
-exposing your laptop to the internet. Add as many repos as you like in the tray
-app and pick which one to work in from the phone.
+stage files, commit, push, browse recent commits, and switch or create branches
+— from a browser, without exposing your laptop to the internet. Add as many
+repos as you like in the tray app and pick which one to work in from the phone.
 
 ## How it works
 
@@ -43,9 +43,19 @@ The tray app holds a list of repos rather than a single path. Open **Pairing &
 Settings**, click **Add a repo folder…**, and pick a git repository — add as
 many as you want; non-git folders are rejected. The phone shows a **Repository**
 picker once it connects, and every action (status, diff, stage, commit, push,
-recent commits) runs against the repo selected there. Adding or removing a repo
-in the tray app takes effect on the phone's next refresh — no re-pairing or
-restart.
+recent commits, branches) runs against the repo selected there. Adding or
+removing a repo in the tray app takes effect on the phone's next refresh — no
+re-pairing or restart.
+
+## Branches
+
+The status screen shows the repo's current branch in a picker: choose a
+different local branch to check it out, or use **New branch…** to create one
+off the current HEAD and switch to it. Switching or creating a branch refreshes
+status and recent commits so nothing stale is left on screen. Checkout fails
+(and reports the git error back to the phone) the same way it would from the
+command line — for example, if you have uncommitted changes that conflict with
+the target branch.
 
 ## Packages
 
