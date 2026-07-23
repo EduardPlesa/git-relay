@@ -4,10 +4,22 @@
   <meta charset="utf-8" />
   <title>Git Relay Agent — Pairing</title>
   <style>
-    body { font-family: sans-serif; padding: 16px; }
+    body { font-family: sans-serif; padding: 16px; margin: 0; }
     #qrcode { margin: 12px 0; }
     input { width: 100%; padding: 6px; margin-bottom: 8px; box-sizing: border-box; }
-    button { padding: 6px 12px; }
+    button { padding: 6px 12px; cursor: pointer; }
+    ul { list-style: none; padding: 0; margin: 8px 0; }
+    li {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    li .name { font-weight: 600; }
+    li .path { color: #666; font-size: 12px; word-break: break-all; }
+    li .meta { min-width: 0; }
+    .remove { border: 0; background: none; color: #b42318; }
+    .muted { color: #666; }
+    #error { color: #b42318; }
   </style>
 </head>
 <body>
@@ -16,27 +28,69 @@
   <img id="qrcode" alt="Pairing QR code" />
   <input id="token" readonly />
 
-  <h2>Repo Path</h2>
-  <input id="repoPath" placeholder="C:\path\to\repo" />
-  <button id="saveRepoPath">Save</button>
-  <p id="status"></p>
+  <h2>Repositories</h2>
+  <p class="muted">Add the repos on this PC you want to reach from your phone. On the phone you pick which one to work in.</p>
+  <button id="addRepo">Add a repo folder…</button>
+  <p id="error"></p>
+  <ul id="repoList"></ul>
 
   <script>
     // The QR image is rendered in the main process (qrcode's Node API) and
     // handed over as a data URL, so this window needs no browser bundle.
-    async function init() {
-      const info = await window.agentApi.getPairingInfo();
-      document.getElementById('token').value = info.pairingToken || '';
-      document.getElementById('repoPath').value = info.repoPath || '';
-      if (info.qrDataUrl) {
-        document.getElementById('qrcode').src = info.qrDataUrl;
+    function renderRepos(repos) {
+      const list = document.getElementById('repoList');
+      list.innerHTML = '';
+      if (!repos.length) {
+        const li = document.createElement('li');
+        li.className = 'muted';
+        li.textContent = 'No repos yet — add one above.';
+        list.appendChild(li);
+        return;
+      }
+      for (const repo of repos) {
+        const li = document.createElement('li');
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = repo.name;
+        const p = document.createElement('div');
+        p.className = 'path';
+        p.textContent = repo.path;
+        meta.appendChild(name);
+        meta.appendChild(p);
+
+        const remove = document.createElement('button');
+        remove.className = 'remove';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', async () => {
+          const res = await window.agentApi.removeRepo(repo.id);
+          renderRepos(res.repos);
+        });
+
+        li.appendChild(meta);
+        li.appendChild(remove);
+        list.appendChild(li);
       }
     }
 
-    document.getElementById('saveRepoPath').addEventListener('click', async () => {
-      const repoPath = document.getElementById('repoPath').value;
-      await window.agentApi.setRepoPath(repoPath);
-      document.getElementById('status').textContent = 'Saved.';
+    async function init() {
+      const info = await window.agentApi.getPairingInfo();
+      document.getElementById('token').value = info.pairingToken || '';
+      if (info.qrDataUrl) {
+        document.getElementById('qrcode').src = info.qrDataUrl;
+      }
+      renderRepos(info.repos || []);
+    }
+
+    document.getElementById('addRepo').addEventListener('click', async () => {
+      document.getElementById('error').textContent = '';
+      const res = await window.agentApi.pickRepo();
+      if (res.error) {
+        document.getElementById('error').textContent = res.error;
+      }
+      renderRepos(res.repos);
     });
 
     init();

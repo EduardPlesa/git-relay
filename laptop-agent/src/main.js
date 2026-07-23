@@ -1,12 +1,13 @@
 require('dotenv').config();
-const { app, Tray, Menu, BrowserWindow, ipcMain } = require('electron');
+const { app, Tray, Menu, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const WebSocketImpl = require('ws');
 const QRCode = require('qrcode');
 const { generateToken } = require('./pairing');
-const { getConfigPath, loadConfig, saveConfig } = require('./config');
+const { getConfigPath, loadConfig, saveConfig, addRepo, removeRepo } = require('./config');
 const { createRelayClient } = require('./relayClient');
+const { isGitRepo } = require('./gitOps');
 
 let tray = null;
 let pairingWindow = null;
@@ -21,7 +22,7 @@ function ensurePairingToken() {
 }
 
 function startRelay() {
-  if (!config.pairingToken || !config.repoPath) return;
+  if (!config.pairingToken) return;
   if (relayChannel) return;
 
   // Electron's main process runs Node 20, which has no global WebSocket
@@ -31,7 +32,9 @@ function startRelay() {
     process.env.SUPABASE_ANON_KEY,
     { realtime: { transport: WebSocketImpl } }
   );
-  relayChannel = createRelayClient(supabase, config.pairingToken, config.repoPath);
+  // Pass a getter, not the array: the relay reads repos fresh on each command,
+  // so adding or removing a repo below takes effect live, no restart needed.
+  relayChannel = createRelayClient(supabase, config.pairingToken, () => config.repos);
 }
 
 function openPairingWindow() {
@@ -65,21 +68,35 @@ ipcMain.handle('get-pairing-info', async () => {
   }
   return {
     pairingToken: config.pairingToken,
-    repoPath: config.repoPath,
+    repos: config.repos,
     qrDataUrl,
   };
 });
 
-ipcMain.handle('set-repo-path', (event, repoPath) => {
-  config.repoPath = repoPath;
-  saveConfig(getConfigPath(), config);
-  // startRelay() no-ops once relayChannel exists, so changing the repo path
-  // after the relay is already running only takes effect on next app restart.
-  if (relayChannel) {
-    console.warn('Repo path changed while relay is active — restart the app to apply it.');
+// Add a repo by picking a folder. Rejects a folder that isn't a git repo so
+// the phone never lists something that errors on every command.
+ipcMain.handle('pick-repo', async () => {
+  const result = await dialog.showOpenDialog(pairingWindow, {
+    title: 'Choose a git repository',
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { repos: config.repos };
   }
+  const chosen = result.filePaths[0];
+  if (!(await isGitRepo(chosen))) {
+    return { repos: config.repos, error: `${chosen} is not a git repository.` };
+  }
+  config = addRepo(config, chosen);
+  saveConfig(getConfigPath(), config);
   startRelay();
-  return config;
+  return { repos: config.repos };
+});
+
+ipcMain.handle('remove-repo', (event, id) => {
+  config = removeRepo(config, id);
+  saveConfig(getConfigPath(), config);
+  return { repos: config.repos };
 });
 
 app.whenReady().then(() => {

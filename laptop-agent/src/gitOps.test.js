@@ -3,7 +3,14 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import simpleGit from 'simple-git';
-import { getStatus, getDiff, stageFiles, commitChanges } from './gitOps.js';
+import {
+  getStatus,
+  getDiff,
+  stageFiles,
+  commitChanges,
+  getRecentCommits,
+  isGitRepo,
+} from './gitOps.js';
 
 async function makeTestRepo() {
   const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'git-relay-repo-'));
@@ -105,5 +112,63 @@ describe('stageFiles and commitChanges', () => {
     const status = await getStatus(repoPath);
     expect(status.staged).toEqual([]);
     expect(status.untracked).toEqual([]);
+  });
+});
+
+describe('getRecentCommits', () => {
+  let repoPath;
+
+  beforeEach(async () => {
+    repoPath = await makeTestRepo();
+  });
+
+  afterEach(() => {
+    fs.rmSync(repoPath, { recursive: true, force: true });
+  });
+
+  it('returns commits newest first with a short hash and subject', async () => {
+    const git = simpleGit(repoPath);
+    fs.writeFileSync(path.join(repoPath, 'second.txt'), 'two\n');
+    await git.add('second.txt');
+    await git.commit('add second file');
+
+    const commits = await getRecentCommits(repoPath, 10);
+    expect(commits).toHaveLength(2);
+    expect(commits[0].subject).toBe('add second file');
+    expect(commits[1].subject).toBe('initial commit');
+    expect(commits[0].shortHash).toMatch(/^[0-9a-f]{7}$/);
+    expect(commits[0].hash.startsWith(commits[0].shortHash)).toBe(true);
+    expect(commits[0].author).toBe('Test User');
+  });
+
+  it('honours the count limit', async () => {
+    const git = simpleGit(repoPath);
+    for (let i = 0; i < 3; i += 1) {
+      fs.writeFileSync(path.join(repoPath, `f${i}.txt`), `${i}\n`);
+      await git.add(`f${i}.txt`);
+      await git.commit(`commit ${i}`);
+    }
+    const commits = await getRecentCommits(repoPath, 2);
+    expect(commits).toHaveLength(2);
+  });
+});
+
+describe('isGitRepo', () => {
+  it('is true inside a git repo', async () => {
+    const repoPath = await makeTestRepo();
+    try {
+      expect(await isGitRepo(repoPath)).toBe(true);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it('is false for a plain folder', async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'git-relay-plain-'));
+    try {
+      expect(await isGitRepo(plain)).toBe(false);
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true });
+    }
   });
 });
