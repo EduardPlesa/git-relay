@@ -2,7 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createSupabaseClient } from '../supabaseClient.js';
 import { createRelayCommander } from '../relay.js';
 
-export default function StatusScreen({ token }) {
+export default function StatusScreen({
+  token,
+  devices = [],
+  activeId = null,
+  onSelectDevice,
+  onAddDevice,
+  onRemoveDevice,
+}) {
   const [online, setOnline] = useState(false);
   const [status, setStatus] = useState({ staged: [], unstaged: [], untracked: [] });
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -11,13 +18,18 @@ export default function StatusScreen({ token }) {
   const [commitMessage, setCommitMessage] = useState('');
   const [errorText, setErrorText] = useState('');
   const [noticeText, setNoticeText] = useState('');
+  const [confirmUnpair, setConfirmUnpair] = useState(false);
   const commanderRef = useRef(null);
   const channelRef = useRef(null);
+  const phoneIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     const supabase = createSupabaseClient();
     const channel = supabase.channel(token, {
-      config: { presence: { key: 'phone' } },
+      // A per-phone key: presence entries are keyed, so two phones sharing a
+      // token under a fixed 'phone' key would overwrite each other and the
+      // laptop would only ever see one of them connected.
+      config: { presence: { key: `phone-${phoneIdRef.current}` } },
     });
     channelRef.current = channel;
     commanderRef.current = createRelayCommander(channel);
@@ -115,15 +127,58 @@ export default function StatusScreen({ token }) {
   }
 
   const changedFiles = [...status.unstaged, ...status.untracked];
+  const activeLabel = devices.find((d) => d.id === activeId)?.label ?? 'this laptop';
 
   return (
     <div className="app">
       <div className="bar">
         <h1>Git Relay</h1>
         <span className={online ? 'dot is-online' : 'dot'}>
-          {online ? 'Laptop online' : 'Laptop offline'}
+          {online ? 'Online' : 'Offline'}
         </span>
       </div>
+
+      <div className="devices">
+        <select
+          value={activeId ?? ''}
+          onChange={(event) => {
+            if (event.target.value === '__add') {
+              onAddDevice();
+            } else {
+              onSelectDevice(event.target.value);
+            }
+          }}
+        >
+          {devices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {device.label}
+            </option>
+          ))}
+          <option value="__add">+ Add a laptop…</option>
+        </select>
+        <button className="link" onClick={() => setConfirmUnpair(true)}>
+          Unpair
+        </button>
+      </div>
+
+      {confirmUnpair && (
+        <p className="msg is-warn">
+          Forget {activeLabel}? The tray app keeps running; you can pair again with the same
+          token.{' '}
+          <button
+            className="link"
+            onClick={() => {
+              setConfirmUnpair(false);
+              onRemoveDevice(activeId);
+            }}
+          >
+            Forget
+          </button>{' '}
+          <button className="link" onClick={() => setConfirmUnpair(false)}>
+            Keep
+          </button>
+        </p>
+      )}
 
       {!online && (
         <p className="msg is-warn">
