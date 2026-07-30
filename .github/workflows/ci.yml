@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  laptop-agent:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    defaults:
+      run:
+        working-directory: laptop-agent
+    env:
+      # Nothing under test imports electron — only main.js and preload.js do,
+      # and those never run in CI. Skipping the ~100MB binary keeps installs fast.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: laptop-agent/package-lock.json
+      - run: npm ci
+      # gitOps tests build real repositories in temp dirs and commit to them,
+      # which git refuses without an identity on a bare runner.
+      - name: Configure git identity for repo fixtures
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name CI
+          git config --global init.defaultBranch main
+      - run: npm test
+
+  phone-app:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    defaults:
+      run:
+        working-directory: phone-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: phone-app/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

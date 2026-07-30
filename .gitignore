@@ -1,6 +1,24 @@
 .worktrees/
 node_modules/
+
+# Env files: every variant is secret except the checked-in templates.
+# Vite also reads .env.local and .env.<mode>.local, so a bare `.env` isn't enough.
 .env
+.env.*
+!.env.example
+
+# Build output
 dist/
 dist-electron/
+dev-dist/
+out/
+release/
+coverage/
+.vite/
+
+# Local agent settings, machine-specific
+.claude/settings.local.json
+
+.DS_Store
+Thumbs.db
 *.log

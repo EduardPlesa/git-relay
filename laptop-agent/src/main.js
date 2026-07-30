@@ -45,8 +45,15 @@ function openPairingWindow() {
   pairingWindow = new BrowserWindow({
     width: 420,
     height: 520,
+    // Electron 31 already defaults to all four, but the window renders a token
+    // that grants git access — pin them so a future major can't silently relax
+    // the renderer's isolation from Node.
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
     },
   });
   pairingWindow.loadFile(path.join(__dirname, 'pairingWindow.html'));

@@ -175,11 +175,34 @@ cd phone-app && npm test
 
 ## Security notes
 
-The pairing token is the only credential — anyone holding it can run git
-operations against your configured repo. Treat it like a password. It lives in
-`~/.git-relay-agent/config.json`, outside this repo, and is never committed.
+Full threat model in [SECURITY.md](SECURITY.md); the short version:
 
-`.env` files are gitignored; only `.env.example` templates are tracked.
+**The pairing token is the only credential.** Anyone holding it can read diffs
+and history, commit, push with your git credentials, pull, discard uncommitted
+work, and delete branches — across *every* repo registered in the tray app.
+Treat it like a password. It lives in `~/.git-relay-agent/config.json`, outside
+this repo, and is never committed. To rotate it, delete `pairingToken` from that
+file and restart the tray app.
+
+**The Supabase anon key is public.** `VITE_SUPABASE_ANON_KEY` is compiled into
+the phone app's bundle, so anyone who loads the page has it. Therefore:
+
+- use a **dedicated Supabase project** for Git Relay, not one holding anything else
+- enable **row level security on every table** in it — a table without RLS is
+  readable and writable by anyone with that key
+- enable [Realtime Authorization](https://supabase.com/docs/guides/realtime/authorization)
+  so key holders can't subscribe to or broadcast on arbitrary channels
+
+The key does not reveal a pairing token, and a 24-byte random token isn't
+guessable, so your channel stays private either way — the exposure is the rest
+of the project the key unlocks.
+
+`.env` files (and `.env.local`, `.env.production`, …) are gitignored; only
+`.env.example` templates are tracked.
 
 The agent must be running for the phone to do anything. If the phone shows
 "Offline", start the tray app.
+
+## License
+
+[MIT](LICENSE)
