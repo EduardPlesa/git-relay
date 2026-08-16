@@ -40,8 +40,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Node 20 is deliberately absent here while laptop-agent still tests it.
+      # jsdom 30 reaches undici, which calls webidl.util.markAsUncloneable — a
+      # Node 22 API. On Node 20 that is undefined, jsdom fails to load, and the
+      # jsdom-environment suite cannot start. Test tooling only; the phone app
+      # itself is a browser bundle and never runs on Node.
       matrix:
-        node: ['20', '22']
+        node: ['22', '24']
     defaults:
       run:
         working-directory: phone-app
