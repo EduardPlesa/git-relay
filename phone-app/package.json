@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.3",
+    "@supabase/supabase-js": "^2.112.4",
     "html5-qrcode": "^2.3.8",
     "qrcode": "^1.5.4",
     "react": "^18.3.0",
