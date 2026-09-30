@@ -14,7 +14,7 @@
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^16.4.5",
     "qrcode": "^1.5.4",
-    "simple-git": "^3.25.0",
+    "simple-git": "^4.0.2",
     "ws": "^8.21.3"
   },
   "devDependencies": {
